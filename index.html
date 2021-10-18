@@ -18,40 +18,37 @@ body {
 	font-family: sans-serif;
 }
 
-lzv-tracker .trackers {
+lzv-root .trackers {
 	display: flex;
 	flex-wrap: wrap;
 	justify-content: space-evenly;
 	gap: 1rem;
 }
 
-lzv-total {
+lzv-timer {
 	display: block;
 	text-align: center;
 }
 
-lzv-project time,
 lzv-project button {
 	display: block;
-}
-
-lzv-project time {
-	text-align: center;
-}
-
-lzv-project button {
 	width: 100%;
 }
 
 /* DEBUG */
-lzv-tracker {
+lzv-root {
 	display: block;
+	padding: 0.5rem;
 	background: #EEE;
 }
-lzv-total {
+lzv-timer {
+	display: block;
+	margin-bottom: 0.5rem;
 	background: aqua;
 }
 lzv-project {
+	display: block;
+	padding: 0.5rem;
 	background: lime;
 }
 	</style>
@@ -60,9 +57,9 @@ lzv-project {
 <body>
 	<h1>Lebenszeitver(sch)wendr</h1>
 
-	<lzv-tracker>
+	<lzv-root>
 		<h2>Time Tracking</h2>
-		<lzv-total></lzv-total>
+		<lzv-timer></lzv-timer>
 		<section class="trackers"></section>
 
 		<h2>Projects</h2>
@@ -71,221 +68,9 @@ lzv-project {
 			<li>play</li>
 			<li>chores</li>
 		</ul>
-	</lzv-tracker>
+	</lzv-root>
 
-	<script>
-(function() {
-
-let REFRESH_INTERVAL = 1000;
-
-customElements.define("lzv-total", class LzvTotal extends HTMLElement {
-	connectedCallback() {
-		this.textContent = formatDuration(0);
-		this.closest("lzv-tracker").
-			addEventListener("lzv:tick", this.onTick.bind(this));
-	}
-
-	onTick(ev) {
-		let { durations } = ev.detail;
-		let total = 0;
-		for(let [name, value] of durations) {
-			total += value;
-		}
-		this.total = total;
-	}
-
-	set total(ms) {
-		requestAnimationFrame(() => {
-			this.textContent = formatDuration(ms);
-		});
-	}
-
-});
-
-class LzvProject extends HTMLElement {
-	connectedCallback() {
-		this.closest("lzv-tracker").
-			addEventListener("lzv:tick", this.onRefresh.bind(this));
-		this.addEventListener("click", this.onToggle);
-	}
-
-	onRefresh(ev) {
-		let ts = this._timestamp;
-		if(!ts) {
-			return;
-		}
-
-		let { durations } = ev.detail;
-		this.duration = durations.get(this.name);
-	}
-
-	onToggle(ev) {
-		if(!ev.target.matches("button[type=button]")) { // event delegation
-			return;
-		}
-
-		let btn = this.button;
-		let label = btn.textContent;
-		btn.textContent = btn.getAttribute("data-alt");
-		btn.setAttribute("data-alt", label);
-
-		let active = this.classList.toggle("active");
-		if(active) {
-			let ts = this._timestamp = Date.now();
-			dispatchEvent(this, "lzv:start", {
-				project: this.name,
-				timestamp: ts
-			});
-		} else {
-			dispatchEvent(this, "lzv:stop", {
-				project: this.name,
-				duration: Date.now() - this._timestamp
-			});
-			this._timestamp = null;
-		}
-	}
-
-	set duration(ms) {
-		requestAnimationFrame(() => {
-			this.querySelector("time").textContent = formatDuration(ms);
-		});
-	}
-
-	get button() {
-		return this.querySelector("button");
-	}
-
-	get name() {
-		return this.getAttribute("data-name");
-	}
-
-	static create(name, parent) {
-		let container = createElement("lzv-project", { "data-name": name }, {
-			parent
-		});
-		createElement("h3", null, {
-			text: name,
-			parent: container
-		});
-		createElement("time", null, {
-			text: formatDuration(0),
-			parent: container
-		});
-		createElement("button", {
-			type: "button",
-			"data-alt": "stop"
-		}, {
-			text: "start",
-			parent: container
-		});
-	}
-}
-customElements.define("lzv-project", LzvProject);
-
-customElements.define("lzv-tracker", class LzvTracker extends HTMLElement {
-	connectedCallback() {
-		this._log = [];
-		this._totals = new Map();
-		this._active = new Map();
-
-		let container = this.trackers;
-		for(let name of this.projects) {
-			LzvProject.create(name, container);
-		}
-
-		this.refresh = this.refresh.bind(this);
-		this.addEventListener("lzv:start", this.onStart);
-		this.addEventListener("lzv:stop", this.onStop);
-	}
-
-	onStart(ev) {
-		let { project, timestamp } = ev.detail;
-		this._log.push({ type: "start", project, timestamp });
-
-		let active = this._active;
-		active.set(project, timestamp);
-		if(active.size === 1) {
-			this._ticker = setInterval(this.refresh, REFRESH_INTERVAL);
-		}
-
-		ev.stopPropagation();
-	}
-
-	onStop(ev) {
-		let { project, duration } = ev.detail;
-		this._log.push({ type: "stop", project, duration });
-
-		let totals = this._totals;
-		let sum = (totals.get(project) || 0) + duration;
-		totals.set(project, sum);
-
-		let active = this._active;
-		active.delete(project);
-		if(active.size === 0) {
-			clearInterval(this._ticker);
-			this._ticker = null;
-		}
-
-		ev.stopPropagation();
-	}
-
-	refresh() {
-		let ts = Date.now();
-		let totals = this._totals;
-		let durations = new Map();
-		for(let [name, start] of this._active) {
-			let total = totals.get(name) || 0;
-			durations.set(name, total + ts - start);
-		}
-
-		dispatchEvent(this, "lzv:tick", {
-			durations
-		}, { bubbles: false });
-	}
-
-	get projects() {
-		return [...this.querySelectorAll(".projects li")].
-			map(el => el.textContent);
-	}
-
-	get trackers() {
-		return this.querySelector(".trackers");
-	}
-});
-
-function dispatchEvent(emitter, name, payload, options = { bubbles: true }) {
-	if(payload) {
-		options.detail = payload;
-	}
-	let ev = new CustomEvent(name, options);
-	emitter.dispatchEvent(ev);
-}
-
-function createElement(tag, attribs, { text, parent } = {}) {
-	let el = document.createElement(tag);
-	Object.entries(attribs || {}).forEach(([name, value]) => {
-		el.setAttribute(name, value);
-	});
-	if(text) {
-		el.textContent = text;
-	}
-	if(parent) {
-		parent.appendChild(el);
-	}
-	return el;
-}
-
-function formatDuration(ms) {
-	let s = Math.floor(ms / 1000);
-	let m = Math.floor(s / 60);
-	let h = Math.floor(m / 60);
-	return [h, m % 60, s % 60].
-		map(v => Math.floor(v).toString().padStart(2, 0)).
-		join(":");
-}
-
-}());
-	</script>
+	<script type="module" src="./src/index.js"></script>
 </body>
 
 </html>
