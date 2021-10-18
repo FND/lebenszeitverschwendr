@@ -55,11 +55,10 @@ export class LzvRoot extends HTMLElement {
 
 	refresh() {
 		let ts = Date.now();
-		let totals = this._totals;
-		let durations = new Map();
+		let durations = new Map(this._totals);
 		for(let [name, start] of this._active) {
-			let total = totals.get(name) || 0;
-			durations.set(name, total + ts - start);
+			let value = durations.get(name) || 0;
+			durations.set(name, value + ts - start);
 		}
 
 		dispatchEvent(this, "lzv:tick", {
