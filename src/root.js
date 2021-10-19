@@ -2,8 +2,6 @@
 import { create as createProject } from "./project.js";
 import { dispatchEvent } from "./util.js";
 
-let REFRESH_INTERVAL = 1000;
-
 export let TAG = "lzv-root";
 
 export class LzvRoot extends HTMLElement {
@@ -29,7 +27,7 @@ export class LzvRoot extends HTMLElement {
 		let active = this._active;
 		active.set(project, timestamp);
 		if(active.size === 1) {
-			this._ticker = setInterval(this.refresh, REFRESH_INTERVAL);
+			this._ticker = setInterval(this.refresh, this.interval);
 		}
 
 		ev.stopPropagation();
@@ -73,5 +71,10 @@ export class LzvRoot extends HTMLElement {
 
 	get trackers() {
 		return this.querySelector(".trackers");
+	}
+
+	get interval() {
+		let value = this.getAttribute("interval");
+		return value ? parseInt(value, 10) * 1000 : 1000; // TODO: error handling
 	}
 }
